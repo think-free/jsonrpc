@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -188,10 +189,13 @@ func (server *Server) runNetHandler(client *jsonrpcclientsocket.ClientSocket) {
 		<-hbtimer.C
 		log.Println("Client heartbeat not received")
 		client.Close()
+
+		return
 	}()
 
 	messageReceivedChan := make(chan []byte)
 	stopChan := make(chan bool)
+
 	go jsonrpcreader.ReadJsonPacket(&messageReceivedChan, &stopChan, client)
 
 	for {
@@ -199,16 +203,23 @@ func (server *Server) runNetHandler(client *jsonrpcclientsocket.ClientSocket) {
 
 		case mes := <-messageReceivedChan:
 			go server.parseJson(hbtimer, client, mes)
+
 		case <-stopChan:
 			server.mutex.Lock()
 			if server.clientsByValue[client] != "" {
 
-				delete(server.clientsByName, server.clientsByValue[client])
-				delete(server.clientsByValue, client)
+				name := server.clientsByValue[client]
+				server.channelClientState <- ClientState{name, false}
 
-				server.channelClientState <- ClientState{server.clientsByValue[client], false}
+				log.Println("Removing client from client list : ", name)
+
+				delete(server.clientsByName, name)
+				delete(server.clientsByValue, client)
 			}
 			server.mutex.Unlock()
+			hbtimer.Reset(time.Nanosecond)
+			runtime.Goexit()
+
 			return
 		}
 	}
@@ -241,7 +252,8 @@ func (server *Server) parseJson(hbtimer *time.Timer, client *jsonrpcclientsocket
 
 		var hb string
 		if err := json.Unmarshal(body, &hb); err != nil {
-			log.Fatal(err)
+
+			log.Println(err)
 		}
 
 		hbtimer.Reset(time.Second * hB_TIMEOUT)
@@ -252,16 +264,15 @@ func (server *Server) parseJson(hbtimer *time.Timer, client *jsonrpcclientsocket
 
 		var hello jsonrpcmessage.HelloBody
 		if err := json.Unmarshal(body, &hello); err != nil {
-			log.Fatal(err)
+
+			log.Println(err)
 		}
 
 		server.mutex.Lock()
 
 		if server.clientsByName[hello.Name] != nil {
 
-			log.Println("Client '" + hello.Name + "' already send hello, skipping")
-			server.mutex.Unlock()
-			return
+			log.Println("WARNING ! Client '" + hello.Name + "' already send hello") //, skipping")
 		}
 
 		server.clientsByName[hello.Name] = client
@@ -271,11 +282,13 @@ func (server *Server) parseJson(hbtimer *time.Timer, client *jsonrpcclientsocket
 		logged := strconv.FormatBool(server.state.Logged)
 		domain := hello.Name + "." + server.completeDomain
 
-		client.Write([]byte("{\"type\" : \"state\", \"body\" : {\"tld\": " + tld + ", \"logged\" : " + logged + ", \"domain\" : \"" + domain + "\" , \"ssid\" : \"not implemented\"}}"))
-
-		log.Println("Client '" + hello.Name + "' (" + client.ClientType + ") in server '" + server.hostname + "' allowed to communicate (" + domain + ")")
+		hostn := server.hostname
 
 		server.mutex.Unlock()
+
+		client.Write([]byte("{\"type\" : \"state\", \"body\" : {\"tld\": " + tld + ", \"logged\" : " + logged + ", \"domain\" : \"" + domain + "\" , \"ssid\" : \"not implemented\"}}"))
+
+		log.Println("Client '" + hello.Name + "' (" + client.ClientType + ") in server '" + hostn + "' allowed to communicate (" + domain + ")")
 
 		server.channelClientState <- ClientState{hello.Name, true}
 
@@ -299,6 +312,8 @@ func (server *Server) parseJson(hbtimer *time.Timer, client *jsonrpcclientsocket
 
 			log.Println("Client forgot to send a hello message")
 			// TODO : Send notification to the client
+
+			time.Sleep(10 * time.Millisecond)
 			client.Close()
 		}
 	}
@@ -309,7 +324,7 @@ func (server *Server) parseRoutedMessage(mes *jsonrpcmessage.RoutedMessage) {
 
 	//log.Println("Routed message received of type :'" + mes.Type + "' -> routing from : " + mes.Src + " to : " + mes.Dst)
 
-	if mes.Dst == server.completeDomain {
+	if mes.Dst == server.completeDomain || mes.Dst == "" {
 
 		//log.Println("This is an internal message of type", mes.Type)
 

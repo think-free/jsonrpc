@@ -22,7 +22,11 @@ func ReadJsonPacket(messageReceivedChan *chan []byte, stopChan *chan bool, clien
 
 		if err != nil {
 			if err.Error() == "EOF" {
+<<<<<<< HEAD
 				log.Println("Client disconnected")
+=======
+				log.Println("Error reading : Client disconnected")
+>>>>>>> master
 			} else {
 				log.Println("Error reading : ", err.Error(), receivedBytes)
 			}
