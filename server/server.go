@@ -102,6 +102,15 @@ func New(host string, port string, wsPort string, hostname string, state jsonrpc
 */
 func (server *Server) Run() {
 
+	//go func() {
+	//
+	//	for {
+	//
+	//		time.Sleep(time.Second)
+	//		fmt.Println(runtime.NumGoroutine())
+	//	}
+	//}()
+
 	// Handle messages coming from the channel
 
 	go server.runChannelHandler()
@@ -189,7 +198,6 @@ func (server *Server) runNetHandler(client *jsonrpcclientsocket.ClientSocket) {
 		<-hbtimer.C
 		log.Println("Client heartbeat not received")
 		client.Close()
-
 		return
 	}()
 
@@ -202,7 +210,7 @@ func (server *Server) runNetHandler(client *jsonrpcclientsocket.ClientSocket) {
 		select {
 
 		case mes := <-messageReceivedChan:
-			go server.parseJson(hbtimer, client, mes)
+			server.parseJson(hbtimer, client, mes)
 
 		case <-stopChan:
 			server.mutex.Lock()
@@ -252,7 +260,6 @@ func (server *Server) parseJson(hbtimer *time.Timer, client *jsonrpcclientsocket
 
 		var hb string
 		if err := json.Unmarshal(body, &hb); err != nil {
-
 			log.Println(err)
 		}
 
@@ -264,7 +271,6 @@ func (server *Server) parseJson(hbtimer *time.Timer, client *jsonrpcclientsocket
 
 		var hello jsonrpcmessage.HelloBody
 		if err := json.Unmarshal(body, &hello); err != nil {
-
 			log.Println(err)
 		}
 
@@ -273,6 +279,8 @@ func (server *Server) parseJson(hbtimer *time.Timer, client *jsonrpcclientsocket
 		if server.clientsByName[hello.Name] != nil {
 
 			log.Println("WARNING ! Client '" + hello.Name + "' already send hello") //, skipping")
+			delete(server.clientsByName, hello.Name)
+			delete(server.clientsByValue, client)
 		}
 
 		server.clientsByName[hello.Name] = client
@@ -281,7 +289,6 @@ func (server *Server) parseJson(hbtimer *time.Timer, client *jsonrpcclientsocket
 		tld := strconv.FormatBool(server.state.Tld)
 		logged := strconv.FormatBool(server.state.Logged)
 		domain := hello.Name + "." + server.completeDomain
-
 		hostn := server.hostname
 
 		server.mutex.Unlock()
@@ -324,9 +331,7 @@ func (server *Server) parseRoutedMessage(mes *jsonrpcmessage.RoutedMessage) {
 
 	//log.Println("Routed message received of type :'" + mes.Type + "' -> routing from : " + mes.Src + " to : " + mes.Dst)
 
-	if mes.Dst == server.completeDomain || mes.Dst == "" {
-
-		//log.Println("This is an internal message of type", mes.Type)
+	if mes.Dst == server.completeDomain || mes.Dst == "" || (mes.Dst == "#tld#" && server.state.Tld) {
 
 		if server.channelinternalmessages != nil {
 
@@ -409,18 +414,19 @@ func (server *Server) processStateChange(state *jsonrpcmessage.StateBody) {
 		server.completeDomain = server.hostname
 	}
 
+	server.mutex.Unlock()
+
 	// Send the state to all clients
 
 	for name, client := range server.clientsByName {
 
 		log.Println("Sending new state to client", name)
 
-		tld := strconv.FormatBool(server.state.Tld)
-		logged := strconv.FormatBool(server.state.Logged)
+		tld := strconv.FormatBool(state.Tld)
+		logged := strconv.FormatBool(state.Logged)
 		domain := name + "." + server.completeDomain
 
 		client.Write([]byte("{\"type\" : \"state\", \"body\" : {\"tld\": " + tld + ", \"logged\" : " + logged + ", \"domain\" : \"" + domain + "\" , \"ssid\" : \"not implemented\" }}"))
 	}
 
-	server.mutex.Unlock()
 }

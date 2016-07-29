@@ -10,14 +10,6 @@ package jsonrpclient
 
 import (
 	"encoding/json"
-<<<<<<< HEAD
-	"github.com/think-free/jsonrpc/common/clientsocket"
-	"github.com/think-free/jsonrpc/common/messagereader"
-	"github.com/think-free/jsonrpc/common/messages"
-	"log"
-	"net"
-	"time"
-=======
 	"log"
 	"net"
 	"time"
@@ -25,7 +17,6 @@ import (
 	"github.com/think-free/jsonrpc/common/clientsocket"
 	"github.com/think-free/jsonrpc/common/messagereader"
 	"github.com/think-free/jsonrpc/common/messages"
->>>>>>> master
 )
 
 /* Constants */
@@ -33,15 +24,9 @@ import (
 
 const (
 	hB_TIMEOUT        = 2 // In seconds
-<<<<<<< HEAD
-	con_TIMEOUT       = 5
-	protocolVersion   = "2.1.0"
-	reconnect_TIMEOUT = 5
-=======
 	con_TIMEOUT       = 15
 	protocolVersion   = "2.1.0"
 	reconnect_TIMEOUT = 15
->>>>>>> master
 )
 
 /* The client */
@@ -139,11 +124,7 @@ func (client *Client) Run() {
 			case <-contimer.C:
 				client.socket.Close()
 				log.Println("Closing client")
-<<<<<<< HEAD
-				return
-=======
 				break
->>>>>>> master
 
 			// Send message to the server
 			case mes := <-client.sendChannel:
